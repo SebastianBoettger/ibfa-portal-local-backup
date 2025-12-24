@@ -23,6 +23,21 @@ type StatusFilter = 'all' | 'active' | 'inactive';
 type EditableField = 'legacyId' | 'name' | 'city' | 'zipCode' | 'street' | 'email' | 'phone';
 type DraftValue = string;
 
+const ALL_COLUMNS = [
+  { key: 'name', label: 'Name' },
+  { key: 'city', label: 'Ort' },
+  { key: 'zipCode', label: 'PLZ' },
+  { key: 'street', label: 'Straße' },
+  { key: 'email', label: 'E-Mail' },
+  { key: 'phone', label: 'Telefon' },
+  { key: 'legacyId', label: 'Kd.-Nr' },
+  { key: 'isActive', label: 'Status' },
+  { key: 'actions', label: 'Aktionen' },
+] as const;
+
+type ColumnKey = typeof ALL_COLUMNS[number]['key'];
+const COL_STORAGE_KEY = 'customers_visible_columns_v1';
+
 export default function CustomersPage() {
   const router = useRouter();
   const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -42,10 +57,32 @@ export default function CustomersPage() {
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
+  // Spalten sichtbar
+  const [visibleCols, setVisibleCols] = useState<Record<ColumnKey, boolean>>(() => {
+    const defaults = Object.fromEntries(ALL_COLUMNS.map((c) => [c.key, true])) as Record<ColumnKey, boolean>;
+    return defaults;
+  });
+
   // Inline edit
   const [editing, setEditing] = useState<{ id: string; field: EditableField } | null>(null);
   const [draft, setDraft] = useState<DraftValue>('');
   const [savingKey, setSavingKey] = useState<string | null>(null); // `${id}:${field}`
+
+  // visibleCols aus localStorage laden + speichern
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(COL_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Partial<Record<ColumnKey, boolean>>;
+      setVisibleCols((prev) => ({ ...prev, ...parsed }));
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(visibleCols));
+    } catch {}
+  }, [visibleCols]);
 
   function goEdit(id: string) {
     sessionStorage.setItem('customersScrollY', String(window.scrollY));
@@ -164,6 +201,7 @@ export default function CustomersPage() {
     }
   }
 
+  // Inline edit helpers
   function getValue(c: Customer, field: EditableField): string {
     if (field === 'legacyId') return c.legacyId == null ? '' : String(c.legacyId);
     const v = c[field];
@@ -189,7 +227,6 @@ export default function CustomersPage() {
       return { legacyId: n };
     }
 
-    // Strings: leer => null (damit DB sauber bleibt)
     const v = value.trim();
     return { [field]: v === '' ? null : v };
   }
@@ -203,7 +240,6 @@ export default function CustomersPage() {
     const current = customers.find((c) => c.id === id);
     if (!current) return;
 
-    // nichts geändert?
     const oldVal = getValue(current, field);
     if (draft === oldVal) {
       cancelEdit();
@@ -218,17 +254,14 @@ export default function CustomersPage() {
       return;
     }
 
-    // optimistic update
     const before = current;
     setSavingKey(key);
 
+    // optimistic update
     setCustomers((prev) =>
       prev.map((c) => {
         if (c.id !== id) return c;
-        if (field === 'legacyId') {
-          const v = patch.legacyId;
-          return { ...c, legacyId: v };
-        }
+        if (field === 'legacyId') return { ...c, legacyId: patch.legacyId };
         return { ...c, [field]: patch[field] };
       }),
     );
@@ -242,7 +275,6 @@ export default function CustomersPage() {
         },
         body: JSON.stringify(patch),
       });
-
       if (!res.ok) throw new Error(await res.text());
       cancelEdit();
     } catch {
@@ -271,7 +303,7 @@ export default function CustomersPage() {
         c.street ?? '',
         c.email ?? '',
         c.phone ?? '',
-        legacy, // <- Suche nach Kundennummer
+        legacy, // Suche inkl. Kundennummer
       ]
         .join(' ')
         .toLowerCase();
@@ -305,10 +337,6 @@ export default function CustomersPage() {
     return sorted;
   }, [customers, query, statusFilter, sortKey, sortDir]);
 
-  if (!auth) return <div className="p-4">Prüfe Anmeldung …</div>;
-  if (loading) return <div className="p-4">Lade Kunden …</div>;
-  if (error) return <div className="p-4 text-red-600">Fehler: {error}</div>;
-
   const isEditing = (id: string, field: EditableField) => editing?.id === id && editing?.field === field;
 
   const Cell = ({ c, field }: { c: Customer; field: EditableField }) => {
@@ -320,12 +348,7 @@ export default function CustomersPage() {
 
     if (!edit) {
       return (
-        <button
-          type="button"
-          onClick={() => startEdit(c, field)}
-          className="w-full text-left"
-          title="Klicken zum Bearbeiten"
-        >
+        <button type="button" onClick={() => startEdit(c, field)} className="w-full text-left" title="Klicken zum Bearbeiten">
           <span className="inline-flex items-center gap-2">
             <span>{display}</span>
             {saving ? <span className="text-xs text-gray-400">Speichere…</span> : null}
@@ -337,7 +360,7 @@ export default function CustomersPage() {
     return (
       <input
         autoFocus
-        className="w-full border rounded px-2 py-1 text-sm"
+        className="w-full border rounded px-2 py-1 text-sm bg-white text-black"
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => saveEdit()}
@@ -349,6 +372,10 @@ export default function CustomersPage() {
     );
   };
 
+  if (!auth) return <div className="p-4">Prüfe Anmeldung …</div>;
+  if (loading) return <div className="p-4">Lade Kunden …</div>;
+  if (error) return <div className="p-4 text-red-600">Fehler: {error}</div>;
+
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-end justify-between gap-4">
@@ -358,7 +385,7 @@ export default function CustomersPage() {
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-600">Suche</label>
             <input
-              className="border rounded px-3 py-2 text-sm w-72"
+              className="border rounded px-3 py-2 text-sm w-72 bg-white text-black"
               placeholder="Name, Ort, PLZ, Straße, E-Mail, Telefon, Kd.-Nr"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -368,61 +395,81 @@ export default function CustomersPage() {
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-600">Status</label>
             <select
-              className="border rounded px-3 py-2 text-sm"
+              className="border border-gray-300 rounded px-3 py-2 text-sm bg-white text-black"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
             >
-              <option value="all">Alle</option>
-              <option value="active">Nur Aktiv</option>
-              <option value="inactive">Nur Inaktiv</option>
+              <option className="text-black" value="all">Alle</option>
+              <option className="text-black" value="active">Nur Aktiv</option>
+              <option className="text-black" value="inactive">Nur Inaktiv</option>
             </select>
           </div>
 
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-600">Sortierung</label>
             <select
-              className="border rounded px-3 py-2 text-sm"
+              className="border border-gray-300 rounded px-3 py-2 text-sm bg-white text-black"
               value={sortKey}
               onChange={(e) => setSortKey(e.target.value as SortKey)}
             >
-              <option value="name">Name</option>
-              <option value="city">Ort</option>
-              <option value="zipCode">PLZ</option>
-              <option value="legacyId">Kd.-Nr</option>
-              <option value="isActive">Status</option>
+              <option className="text-black" value="name">Name</option>
+              <option className="text-black" value="city">Ort</option>
+              <option className="text-black" value="zipCode">PLZ</option>
+              <option className="text-black" value="legacyId">Kd.-Nr</option>
+              <option className="text-black" value="isActive">Status</option>
             </select>
           </div>
 
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-600">Richtung</label>
             <select
-              className="border rounded px-3 py-2 text-sm"
+              className="border border-gray-300 rounded px-3 py-2 text-sm bg-white text-black"
               value={sortDir}
               onChange={(e) => setSortDir(e.target.value as SortDir)}
             >
-              <option value="asc">A→Z / klein→groß</option>
-              <option value="desc">Z→A / groß→klein</option>
+              <option className="text-black" value="asc">A→Z / klein→groß</option>
+              <option className="text-black" value="desc">Z→A / groß→klein</option>
             </select>
+          </div>
+
+          {/* Spalten-Auswahl */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-600">Spalten</label>
+            <details className="border border-gray-300 rounded px-3 py-2 bg-white text-black">
+              <summary className="cursor-pointer text-sm select-none">Auswählen</summary>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                {ALL_COLUMNS.map((col) => (
+                  <label key={col.key} className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={visibleCols[col.key]}
+                      onChange={() => setVisibleCols((prev) => ({ ...prev, [col.key]: !prev[col.key] }))}
+                    />
+                    {col.label}
+                  </label>
+                ))}
+              </div>
+            </details>
           </div>
         </div>
       </div>
 
       <div className="text-xs text-gray-500">
-        Tipp: Klick auf eine Zelle zum Bearbeiten. Enter = speichern, ESC = abbrechen.
+        Tipp: Klick auf eine Zelle zum Bearbeiten. Enter = speichern, ESC = abbrechen. Status-Badge klickbar.
       </div>
 
       <table className="min-w-full border text-sm">
         <thead>
           <tr className="border-b">
-            <th className="p-2 text-left">Name</th>
-            <th className="p-2 text-left">Ort</th>
-            <th className="p-2 text-left">PLZ</th>
-            <th className="p-2 text-left">Straße</th>
-            <th className="p-2 text-left">E-Mail</th>
-            <th className="p-2 text-left">Telefon</th>
-            <th className="p-2 text-left">Kd.-Nr</th>
-            <th className="p-2 text-left">Status</th>
-            <th className="p-2 text-left">Aktionen</th>
+            {visibleCols.name && <th className="p-2 text-left">Name</th>}
+            {visibleCols.city && <th className="p-2 text-left">Ort</th>}
+            {visibleCols.zipCode && <th className="p-2 text-left">PLZ</th>}
+            {visibleCols.street && <th className="p-2 text-left">Straße</th>}
+            {visibleCols.email && <th className="p-2 text-left">E-Mail</th>}
+            {visibleCols.phone && <th className="p-2 text-left">Telefon</th>}
+            {visibleCols.legacyId && <th className="p-2 text-left">Kd.-Nr</th>}
+            {visibleCols.isActive && <th className="p-2 text-left">Status</th>}
+            {visibleCols.actions && <th className="p-2 text-left">Aktionen</th>}
           </tr>
         </thead>
 
@@ -431,78 +478,92 @@ export default function CustomersPage() {
             const isHighlight = highlightId === c.id;
 
             return (
-              <tr
-                id={`customer-row-${c.id}`}
-                key={c.id}
-                className={`border-b ${isHighlight ? 'bg-green-100 text-green-900' : ''}`}
-              >
-                <td className="p-2 font-medium">
-                  <Cell c={c} field="name" />
-                </td>
-                <td className="p-2">
-                  <Cell c={c} field="city" />
-                </td>
-                <td className="p-2">
-                  <Cell c={c} field="zipCode" />
-                </td>
-                <td className="p-2">
-                  <Cell c={c} field="street" />
-                </td>
-                <td className="p-2">
-                  <Cell c={c} field="email" />
-                </td>
-                <td className="p-2">
-                  <Cell c={c} field="phone" />
-                </td>
-                <td className="p-2">
-                  <Cell c={c} field="legacyId" />
-                </td>
+              <tr id={`customer-row-${c.id}`} key={c.id} className={`border-b ${isHighlight ? 'bg-green-100 text-green-900' : ''}`}>
+                {visibleCols.name && (
+                  <td className="p-2 font-medium">
+                    <Cell c={c} field="name" />
+                  </td>
+                )}
+                {visibleCols.city && (
+                  <td className="p-2">
+                    <Cell c={c} field="city" />
+                  </td>
+                )}
+                {visibleCols.zipCode && (
+                  <td className="p-2">
+                    <Cell c={c} field="zipCode" />
+                  </td>
+                )}
+                {visibleCols.street && (
+                  <td className="p-2">
+                    <Cell c={c} field="street" />
+                  </td>
+                )}
+                {visibleCols.email && (
+                  <td className="p-2">
+                    <Cell c={c} field="email" />
+                  </td>
+                )}
+                {visibleCols.phone && (
+                  <td className="p-2">
+                    <Cell c={c} field="phone" />
+                  </td>
+                )}
+                {visibleCols.legacyId && (
+                  <td className="p-2">
+                    <Cell c={c} field="legacyId" />
+                  </td>
+                )}
 
-                <td className="p-2">
-                  <button type="button" onClick={() => toggleActive(c.id)} title="Klicken zum Umschalten">
-                    <span
-                      className={
-                        c.isActive
-                          ? isHighlight
-                            ? 'inline-flex rounded-full bg-green-200 px-2 py-0.5 text-xs font-semibold text-green-900'
-                            : 'inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700'
-                          : isHighlight
-                          ? 'inline-flex rounded-full bg-red-200 px-2 py-0.5 text-xs font-semibold text-red-900'
-                          : 'inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700'
-                      }
-                    >
-                      {c.isActive ? 'Aktiv' : 'Inaktiv'}
-                    </span>
-                  </button>
-                </td>
-
-                <td className="p-2">
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => goEdit(c.id)}
-                      className={
-                        isHighlight
-                          ? 'px-2 py-1 border border-green-400 rounded text-xs font-semibold text-green-900 hover:bg-green-200'
-                          : 'px-2 py-1 border rounded text-xs text-blue-600 hover:bg-blue-50'
-                      }
-                    >
-                      Bearbeiten
+                {visibleCols.isActive && (
+                  <td className="p-2">
+                    <button type="button" onClick={() => toggleActive(c.id)} title="Klicken zum Umschalten">
+                      <span
+                        className={
+                          c.isActive
+                            ? isHighlight
+                              ? 'inline-flex rounded-full bg-green-200 px-2 py-0.5 text-xs font-semibold text-green-900'
+                              : 'inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700'
+                            : isHighlight
+                            ? 'inline-flex rounded-full bg-red-200 px-2 py-0.5 text-xs font-semibold text-red-900'
+                            : 'inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700'
+                        }
+                      >
+                        {c.isActive ? 'Aktiv' : 'Inaktiv'}
+                      </span>
                     </button>
+                  </td>
+                )}
 
-                    <button
-                      onClick={() => handleDelete(c.id)}
-                      disabled={deletingId === c.id}
-                      className={
-                        isHighlight
-                          ? 'px-2 py-1 border border-red-400 rounded text-xs font-semibold text-red-900 hover:bg-red-200 disabled:opacity-50'
-                          : 'px-2 py-1 border rounded text-xs text-red-600 hover:bg-red-50 disabled:opacity-50'
-                      }
-                    >
-                      {deletingId === c.id ? 'Lösche…' : 'Löschen'}
-                    </button>
-                  </div>
-                </td>
+                {visibleCols.actions && (
+                  <td className="p-2">
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => goEdit(c.id)}
+                        className={
+                          isHighlight
+                            ? 'px-2 py-1 border border-green-400 rounded text-xs font-semibold text-green-900 hover:bg-green-200'
+                            : 'px-2 py-1 border rounded text-xs text-blue-600 hover:bg-blue-50'
+                        }
+                      >
+                        Bearbeiten
+                      </button>
+
+                      <button
+                        onClick={() => handleDelete(c.id)}
+                        disabled={deletingId === c.id}
+                        className={
+                          isHighlight
+                            ? 'px-2 py-1 border border-red-400 rounded text-xs font-semibold text-red-900 hover:bg-red-200 disabled:opacity-50'
+                            : 'px-2 py-1 border rounded text-xs text-red-600 hover:bg-red-50 disabled:opacity-50'
+                        }
+                      >
+                        {deletingId === c.id ? 'Lösche…' : 'Löschen'}
+                      </button>
+                    </div>
+                  </td>
+                )}
               </tr>
             );
           })}

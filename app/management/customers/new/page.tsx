@@ -4,7 +4,7 @@ import { FormEvent, useState } from 'react';
 import { loadAuth } from '@/lib/auth';
 
 type FormState = {
-  legacyId: string;     // Kd.-Nr Eingabe als String (wir parsen zu number)
+  legacyId: string;
   isActive: 'true' | 'false';
 
   praxisname: string;
@@ -14,14 +14,13 @@ type FormState = {
   zipCode: string;
   city: string;
   phoneLandline: string;
-  phoneMobile: string; // aktuell noch nicht gespeichert
+  phoneMobile: string; // noch nicht gespeichert
 };
 
 export default function NewCustomerPage() {
   const [form, setForm] = useState<FormState>({
     legacyId: '',
     isActive: 'true',
-
     praxisname: '',
     email: '',
     street: '',
@@ -38,6 +37,9 @@ export default function NewCustomerPage() {
   const update = (field: keyof FormState, value: string) =>
     setForm((prev) => ({ ...prev, [field]: value }));
 
+  const toggleActiveUi = () =>
+    update('isActive', form.isActive === 'true' ? 'false' : 'true');
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setMessage('');
@@ -50,7 +52,7 @@ export default function NewCustomerPage() {
       return;
     }
 
-    // legacyId parsen
+    // legacyId parse
     const legacyTrim = form.legacyId.trim();
     let legacyId: number | null = null;
     if (legacyTrim !== '') {
@@ -76,9 +78,7 @@ export default function NewCustomerPage() {
         zipCode: form.zipCode.trim() || null,
         city: form.city.trim() || null,
         phone: form.phoneLandline.trim() || null,
-
-        // NEU:
-        legacyId, // Kd.-Nr
+        legacyId,
         isActive: form.isActive === 'true',
       }),
     });
@@ -92,9 +92,6 @@ export default function NewCustomerPage() {
 
     setMessage('Kunde erfolgreich angelegt');
     setSaving(false);
-
-    // optional: Formular leeren
-    // setForm({ ...initial });
   };
 
   return (
@@ -102,7 +99,7 @@ export default function NewCustomerPage() {
       <h1 className="text-xl font-semibold">Neukundeneintrag</h1>
 
       <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3">
-        <div className="grid grid-cols-[1fr,1fr] gap-2">
+        <div className="grid grid-cols-[1fr,1fr] gap-2 items-center">
           <input
             className="border px-3 py-2 rounded"
             placeholder="Kd.-Nr (optional)"
@@ -111,81 +108,37 @@ export default function NewCustomerPage() {
             inputMode="numeric"
           />
 
-          <select
-            className="border border-gray-300 rounded px-3 py-2 text-sm bg-white text-black"
-            value={form.isActive}
-            onChange={(e) => update('isActive', e.target.value)}
-          >
-            <option className="text-black" value="true">Aktiv</option>
-            <option className="text-black" value="false">Inaktiv</option>
-          </select>
+          {/* Togglebutton statt Dropdown */}
+          <button type="button" onClick={toggleActiveUi} title="Klicken zum Umschalten" className="text-left">
+            <span
+              className={
+                form.isActive === 'true'
+                  ? 'inline-flex rounded-full bg-green-100 px-2 py-1 text-xs font-semibold text-green-700'
+                  : 'inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-700'
+              }
+            >
+              {form.isActive === 'true' ? 'Aktiv' : 'Inaktiv'}
+            </span>
+          </button>
         </div>
 
-        <input
-          className="border px-3 py-2 rounded"
-          placeholder="Praxisname"
-          value={form.praxisname}
-          onChange={(e) => update('praxisname', e.target.value)}
-          required
-        />
-
-        <input
-          className="border px-3 py-2 rounded"
-          placeholder="E-Mail"
-          type="email"
-          value={form.email}
-          onChange={(e) => update('email', e.target.value)}
-        />
+        <input className="border px-3 py-2 rounded" placeholder="Praxisname" value={form.praxisname} onChange={(e) => update('praxisname', e.target.value)} required />
+        <input className="border px-3 py-2 rounded" placeholder="E-Mail" type="email" value={form.email} onChange={(e) => update('email', e.target.value)} />
 
         <div className="grid grid-cols-[2fr,1fr] gap-2">
-          <input
-            className="border px-3 py-2 rounded"
-            placeholder="Straße"
-            value={form.street}
-            onChange={(e) => update('street', e.target.value)}
-          />
-          <input
-            className="border px-3 py-2 rounded"
-            placeholder="Hausnummer"
-            value={form.houseNumber}
-            onChange={(e) => update('houseNumber', e.target.value)}
-          />
+          <input className="border px-3 py-2 rounded" placeholder="Straße" value={form.street} onChange={(e) => update('street', e.target.value)} />
+          <input className="border px-3 py-2 rounded" placeholder="Hausnummer" value={form.houseNumber} onChange={(e) => update('houseNumber', e.target.value)} />
         </div>
 
         <div className="grid grid-cols-[1fr,2fr] gap-2">
-          <input
-            className="border px-3 py-2 rounded"
-            placeholder="Postleitzahl"
-            value={form.zipCode}
-            onChange={(e) => update('zipCode', e.target.value)}
-          />
-          <input
-            className="border px-3 py-2 rounded"
-            placeholder="Ort"
-            value={form.city}
-            onChange={(e) => update('city', e.target.value)}
-          />
+          <input className="border px-3 py-2 rounded" placeholder="Postleitzahl" value={form.zipCode} onChange={(e) => update('zipCode', e.target.value)} />
+          <input className="border px-3 py-2 rounded" placeholder="Ort" value={form.city} onChange={(e) => update('city', e.target.value)} />
         </div>
 
-        <input
-          className="border px-3 py-2 rounded"
-          placeholder="Festnetznummer"
-          value={form.phoneLandline}
-          onChange={(e) => update('phoneLandline', e.target.value)}
-        />
+        <input className="border px-3 py-2 rounded" placeholder="Festnetznummer" value={form.phoneLandline} onChange={(e) => update('phoneLandline', e.target.value)} />
+        <input className="border px-3 py-2 rounded" placeholder="Mobilnummer (noch nicht gespeichert)" value={form.phoneMobile} onChange={(e) => update('phoneMobile', e.target.value)} />
 
-        <input
-          className="border px-3 py-2 rounded"
-          placeholder="Mobilnummer (noch nicht gespeichert)"
-          value={form.phoneMobile}
-          onChange={(e) => update('phoneMobile', e.target.value)}
-        />
-
-        <button
-          type="submit"
-          disabled={saving}
-          className="border px-3 py-2 rounded mt-2 disabled:opacity-50"
-        >
+        <button type="submit" disabled={saving} className="border px-3 py-2 rounded mt-2 disabled:opacity-50">
           {saving ? 'Speichere…' : 'Speichern'}
         </button>
       </form>
